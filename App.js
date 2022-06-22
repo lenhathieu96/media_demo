@@ -67,6 +67,7 @@ const App: () => Node = () => {
         contentInsetAdjustmentBehavior="automatic"
         style={backgroundStyle}>
         <Header />
+        <Header />
       </ScrollView>
       <MediaBottomSheet />
     </SafeAreaView>

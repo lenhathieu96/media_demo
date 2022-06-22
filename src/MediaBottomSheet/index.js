@@ -1,19 +1,15 @@
+import {View, Dimensions, FlatList, Animated} from 'react-native';
+import React, {useState, useEffect} from 'react';
 import {
-  View,
-  Text,
-  Dimensions,
-  Image,
-  FlatList,
-  ActivityIndicator,
-} from 'react-native';
-import React, {useState, useRef} from 'react';
-import Video from 'react-native-video';
-import {Slider} from '@miblanchard/react-native-slider';
+  gestureHandlerRootHOC,
+  PanGestureHandler,
+} from 'react-native-gesture-handler';
+
 import Modal from 'react-native-modal';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import styles from './styles';
-import ImageViewer from 'react-native-image-zoom-viewer';
+import VideoPlayer from './VideoPlayer';
+import ZoombaleImage from './ZoomableImage';
 
 const MEDIA_URL = [
   {
@@ -62,96 +58,61 @@ const {width, height} = Dimensions.get('window');
 
 const ITEM_WIDTH = width;
 const ITEM_SPACING = 10;
+const END_POINT = 0.2 * height;
 
 export default function MediaBottomSheet() {
   const [isVisible, setVisible] = useState(true);
   const [scrollEnabled, setScrollEnabled] = useState(true);
-  const [currentVideoPosition, setCurrentVideoPosition] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(undefined);
 
-  const videoRef = useRef();
+  const [animation] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    animation.addListener(animate => {
+      if (animate.value >= END_POINT) {
+        setVisible(false);
+      }
+    });
+    return () => {
+      animation.removeAllListeners();
+    };
+  }, []);
+
+  const opacity = animation.interpolate({
+    inputRange: [0, END_POINT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const scale = animation.interpolate({
+    inputRange: [0, END_POINT],
+    outputRange: [1, 0.95],
+    extrapolate: 'clamp',
+  });
+
+  const resetToInitial = () => {
+    Animated.timing(animation, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const renderMedia = ({item}) => {
     // return item.type === 'VIDEO' ? (
+    // style={{width, height, opacity, transform: [{scale: 0.95}]}}>
     return (
       <View
-        style={{
-          width: ITEM_WIDTH + ITEM_SPACING,
-          height: 'auto',
-          backgroundColor: 'black',
-          flexDirection: 'row',
-        }}>
-        <View style={{width: ITEM_WIDTH, height}}>
-          <Video
-            onLoad={videoData => setVideoDuration(videoData.duration)}
-            ref={videoRef}
-            source={{
-              uri: 'https://www.sample-videos.com/video123/mp4/480/big_buck_bunny_480p_30mb.mp4',
-            }}
-            style={{
-              width: ITEM_WIDTH,
-              height: 0.9 * height,
-            }}
-            resizeMode="contain"
-            fullscreen
-            // paused
-            showOnStart
-          />
-          <View
-            style={{
-              width: ITEM_WIDTH,
-              height: 0.9 * height,
-              backgroundColor: 'black',
-              opacity: 1,
-              position: 'absolute',
-              zIndex: 99999,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
-            <Icon name="home" color="white" size={40} />
-          </View>
-          <View
-            style={{
-              flexDirection: 'row',
-              paddingHorizontal: 10,
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              alignSelf: 'flex-end',
-            }}>
-            <View style={{flex: 0.2}}>
-              <Text numberOfLines={1} style={{color: 'white'}}>
-                00: 00
-              </Text>
-            </View>
-            <View style={{flexGrow: 1}}>
-              <Slider
-                value={currentVideoPosition}
-                renderThumbComponent={() => (
-                  <View
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 50,
-                      backgroundColor: 'white',
-                    }}
-                  />
-                )}
-                minimumTrackTintColor="white"
-                thumbTouchSize={{width: 30, height: 30}}
-                onSlidingStart={() => setScrollEnabled(false)}
-                onSlidingComplete={() => setScrollEnabled(true)}
-                onValueChange={value => setCurrentVideoPosition(value)}
-              />
-            </View>
-
-            <View style={{flex: 0.2, alignItems: 'flex-end'}}>
-              <Text numberOfLines={1} style={{color: 'white'}}>
-                00: 00
-              </Text>
-            </View>
-          </View>
-        </View>
-
+        style={[
+          styles.itemContainer,
+          {
+            width: ITEM_WIDTH + ITEM_SPACING,
+          },
+        ]}>
+        <ZoombaleImage
+          source={{
+            uri: 'https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?ixid=MnwxMjA3fDF8MHxlZGl0b3JpYWwtZmVlZHwyNXx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=900&q=60',
+          }}
+        />
         {/* Seperator */}
         <View style={{width: ITEM_SPACING}} />
       </View>
@@ -165,9 +126,21 @@ export default function MediaBottomSheet() {
     // );
   };
 
-  return (
-    <Modal visible={true} style={styles.modal} hasBackdrop={false}>
-      <View style={{width, height}}>
+  const ModalContent = gestureHandlerRootHOC(() => (
+    <PanGestureHandler
+      enabled={false}
+      onGestureEvent={Animated.event(
+        [{nativeEvent: {translationY: animation}}],
+        {
+          useNativeDriver: true,
+        },
+      )}
+      onEnded={resetToInitial}>
+      <Animated.View
+        style={{
+          opacity,
+          transform: [{scale}],
+        }}>
         <FlatList
           scrollEnabled={scrollEnabled}
           style={{width: ITEM_WIDTH + ITEM_SPACING}}
@@ -179,7 +152,13 @@ export default function MediaBottomSheet() {
           bounces={false}
           showsHorizontalScrollIndicator={false}
         />
-      </View>
+      </Animated.View>
+    </PanGestureHandler>
+  ));
+
+  return (
+    <Modal visible={isVisible} style={styles.modal} hasBackdrop={false}>
+      <ModalContent />
     </Modal>
   );
 }
